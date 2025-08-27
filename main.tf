@@ -1,11 +1,14 @@
 provider "aws" {
-  alias  = "us-east-1"
-  region = "us-east-1"
+  alias  = "source"
+  region = var.region_source_bucket
+
 }
 
+
 provider "aws" {
-  alias  = "ap-south-1"
-  region = "ap-south-1"
+  alias  = "destination"
+  region = var.region_destination_bucket
+
 }
 
 resource "random_id" "suffix" {
@@ -13,36 +16,45 @@ resource "random_id" "suffix" {
 }
 
 resource "aws_s3_bucket" "source-bucket" {
-  provider = aws.ap-south-1
-  bucket   = var.source_bucket_name
+  provider = aws.source
+  bucket   = "${var.source_bucket_name}-${random_id.suffix.hex}"
   force_destroy = true
 
 }
 
 
 resource "aws_s3_bucket_versioning" "source"{
-provider = aws.ap-south-1
+provider = aws.source
 bucket = aws_s3_bucket.source-bucket.id
 
 versioning_configuration {
 status = "Enabled"
 }
-
+ depends_on = [
+    aws_s3_bucket.source-bucket
+  ]
 }
 
 resource "aws_s3_bucket" "destination-bucket" {
-  provider = aws.us-east-1
+  provider = aws.destination
   bucket   = "${var.destination_bucket_name}-${random_id.suffix.hex}"
   force_destroy = true
+depends_on = [
+    aws_s3_bucket_versioning.source                        
+  ]
 }
 
 resource "aws_s3_bucket_versioning" "destination" {
-provider = aws.us-east-1
+provider = aws.destination
 bucket = aws_s3_bucket.destination-bucket.id
 
 versioning_configuration{
 status = "Enabled"
 }
+ depends_on = [
+    aws_s3_bucket.destination-bucket
+  ]
+
 
 }
 
@@ -51,7 +63,7 @@ resource "aws_s3_bucket_replication_configuration" "replication" {
 bucket = aws_s3_bucket.source-bucket.id
 #role = "arn:aws:iam::013623161468:role/s3-replica-role"
 role     = aws_iam_role.replication_role.arn
-
+provider = aws.source
 
 rule {
 
@@ -70,6 +82,10 @@ storage_class = "STANDARD"
       status = "Enabled"  # or "Disabled"
     }
 }
+
+depends_on = [
+    aws_s3_bucket_versioning.destination
+  ]
 
 }
 	
